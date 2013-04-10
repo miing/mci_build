@@ -1,0 +1,41 @@
+<VirtualHost *:80>
+  ServerAdmin webmaster@localhost
+  ServerName jenkins.mci.org
+ 
+  LogLevel warn
+  ErrorLog /var/log/apache2/jenkins.mci.org.error.log
+  CustomLog /var/log/apache2/jenkins.mci.org.access.log combined
+
+  Redirect / https://jenkins.mci.org/
+
+</VirtualHost>
+
+<VirtualHost *:443>
+  ServerName jenkins.mci.org
+
+  # Activate HTTPS on the reverse proxy
+  SSLEngine on
+  SSLCertificateFile	/etc/apache2/ssl/mci.org.pem
+  SSLCertificateKeyFile	/etc/apache2/ssl/mci.org.key
+
+  SSLProxyEngine on
+
+  ProxyRequests Off
+  ProxyPreserveHost On
+  ProxyVia Off
+  
+  <Proxy *>
+  	Order deny,allow
+    Allow from all
+  </Proxy>
+  
+  RewriteEngine on
+  RewriteCond %{HTTP_HOST} !^jenkins.mci.org
+  RewriteRule ^.*$ https://jenkins.mci.org
+  
+  ProxyPass / http://127.0.0.1:8070/
+  ProxyPassReverse / http://127.0.0.1:8070/
+
+  ErrorLog /var/log/apache2/jenkins.mci.org.ssl.error.log
+  CustomLog /var/log/apache2/jenkins.mci.org.ssl.access.log combined
+</VirtualHost>

@@ -1,0 +1,37 @@
+<VirtualHost *:80>
+  ServerAdmin webmaster@localhost
+  ServerName wiki.mci.org
+ 
+  LogLevel warn
+  ErrorLog /var/log/apache2/wiki.mci.org.error.log
+  CustomLog /var/log/apache2/wiki.mci.org.access.log combined
+
+  Redirect / https://wiki.mci.org/
+
+</VirtualHost>
+
+<VirtualHost *:443>
+  ServerName wiki.mci.org
+  DocumentRoot /home/www-data/wiki.mci.org
+
+  # Activate HTTPS on Apache2
+  SSLEngine on
+  SSLCertificateFile	/etc/apache2/ssl/xbmlabs.org.pem
+  SSLCertificateKeyFile	/etc/apache2/ssl/xbmlabs.org.key
+  
+  # Devise URL rewrite rules
+  RewriteEngine on
+  RewriteCond %{DOCUMENT_ROOT}%{REQUEST_URI} !-f
+  RewriteCond %{DOCUMENT_ROOT}%{REQUEST_URI} !-d
+  RewriteRule ^(.*)$ %{DOCUMENT_ROOT}/index.php [L]
+    
+  <Directory /home/www-data/wiki.mci.org>
+  	Options +FollowSymLinks
+    AllowOverride All
+  	Order allow,deny
+  	allow from all
+  </Directory>
+
+  ErrorLog /var/log/apache2/wiki.mci.org.ssl.error.log
+  CustomLog /var/log/apache2/wiki.mci.org.ssl.access.log combined
+</VirtualHost>

@@ -1,0 +1,37 @@
+<VirtualHost *:80>
+  ServerAdmin webmaster@localhost
+  ServerName bugs.mci.org
+ 
+  LogLevel warn
+  ErrorLog /var/log/apache2/bugs.mci.org.error.log
+  CustomLog /var/log/apache2/bugs.mci.org.access.log combined
+
+  Redirect / https://bugs.mci.org/
+
+</VirtualHost>
+
+<VirtualHost *:443>
+  ServerName bugs.mci.org
+
+  # Activate HTTPS on Apache2
+  SSLEngine on
+  SSLCertificateFile	/etc/apache2/ssl/mci.org.pem
+  SSLCertificateKeyFile	/etc/apache2/ssl/mci.org.key
+
+  DocumentRoot /home/www-data/bugs.mci.org
+  <Directory /home/www-data/bugs.mci.org>
+  	Options +ExecCGI Indexes FollowSymLinks MultiViews
+ 	AddHandler cgi-script .cgi
+ 	DirectoryIndex index.cgi
+    AllowOverride Limit
+  	Order allow,deny
+  	allow from all
+  </Directory>
+  
+  RewriteEngine on
+  RewriteCond %{HTTP_HOST} !^bugs.mci.org
+  RewriteRule ^.*$ https://bugs.mci.org
+
+  ErrorLog /var/log/apache2/bugs.mci.org.ssl.error.log
+  CustomLog /var/log/apache2/bugs.mci.org.ssl.access.log combined
+</VirtualHost>

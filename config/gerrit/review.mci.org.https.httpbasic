@@ -1,0 +1,49 @@
+<VirtualHost *:80>
+  ServerAdmin webmaster@localhost
+  ServerName review.mci.org
+ 
+  LogLevel warn
+  ErrorLog /var/log/apache2/review.mci.org.error.log
+  CustomLog /var/log/apache2/review.mci.org.access.log combined
+
+  Redirect / https://review.mci.org/
+
+</VirtualHost>
+
+<VirtualHost *:443>
+  ServerName review.mci.org
+
+  # Activate HTTPS on the reverse proxy
+  SSLEngine on
+  SSLCertificateFile	/etc/apache2/ssl/xbmlabs.org.pem
+  SSLCertificateKeyFile	/etc/apache2/ssl/xbmlabs.org.key
+
+  SSLProxyEngine on
+
+  ProxyRequests Off
+  ProxyPreserveHost On
+  ProxyVia Off
+  
+  <Proxy *>
+  	Order deny,allow
+    Allow from all
+  </Proxy>
+  
+  <Location /login/>
+  	AuthType Basic
+  	AuthName "Gerrit Code Review"
+  	AuthBasicProvider file
+	AuthUserFile /home/gerrit/etc/passwords
+  	Require valid-user
+  </Location>
+  
+  RewriteEngine on
+  RewriteCond %{HTTP_HOST} !^review.mci.org
+  RewriteRule ^.*$ https://review.mci.org
+  
+  ProxyPass / http://127.0.0.1:8081/
+  ProxyPassReverse / http://127.0.0.1:8081/
+
+  ErrorLog /var/log/apache2/review.mci.org.ssl.error.log
+  CustomLog /var/log/apache2/review.mci.org.ssl.access.log combined
+</VirtualHost>

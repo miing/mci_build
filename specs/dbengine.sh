@@ -1,0 +1,8 @@
+# General
+
+
+# MYSQL
+MCI_DBENGINE_MYSQL_ROOTPW=pwmysql
+MCI_DBENGINE_MYSQL_HOST=localhost
+
+# POSTGRESQL
