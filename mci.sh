@@ -1379,9 +1379,10 @@ function scmrserver_gerrit_install()
 				item=openIdSsoUrl
 				keys=(`grep "$item" /home/gerrit/etc/gerrit.config 2>/dev/null`)
 				if [ ! "$keys" ] ; then
+					echo "openIdSsoUrl does not exit"
 					sudo -H -u gerrit sed -i -e "/^[[:space:]]type = OPENID_SSO.*/a\\\t$item = $TARGET_SCMR_GERRIT_OPENIDSSO_URL" /home/gerrit/etc/gerrit.config
 				else
-					url=(`echo "$TARGET_SCMR_GERRIT_OPENIDSSO_URL" | sed -e "s/\//\\\\\//g"`)
+					url=(`echo $TARGET_SCMR_GERRIT_OPENIDSSO_URL | sed -e 's/\//\\\\\//g'`)
 					sudo -H -u gerrit sed -i -e "s/^[[:space:]]$item.*/\t$item = $url/" /home/gerrit/etc/gerrit.config
 				fi
 			fi
