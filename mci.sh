@@ -154,6 +154,8 @@ function check_goals()
 }
 
 # Here "full" means building every component selected in site speces.
+LMS_CHOICES=(\
+	sentry)
 SSO_CHOICES=(\
 	migo)
 CMS_CHOICES=(\
@@ -168,6 +170,8 @@ SCMR_CHOICES=(\
 CI_CHOICES=(\
 	jenkins)
 COMPONENT_CHOICES=(\
+	# LMS
+	${LMS_CHOICES[@]} \
 	# SSO
 	${SSO_CHOICES[@]} \
 	# CMS
@@ -216,13 +220,24 @@ SITE_SPECS_BODY=(\
 	WEBSERVER_APACHE2_OWNER \
 	WEBSERVER_APACHE2_OWNER_HOME \
 	WEBSERVER_APACHE2_OWNER_SHELL \
+	LMS \
+	LMS_URL \
+	LMS_IPADDR \
+	LMS_PORT \
+	LMS_SENTRY_SITE \
+	LMS_SENTRY_URL \
+	LMS_SENTRY_WEBSERVER \
+	LMS_SENTRY_DBENGINE \
+	LMS_SENTRY_POSTGRESQL_VERSION_REQUIRED \
 	SSO \
 	SSO_URL \
 	SSO_IPADDR \
 	SSO_PORT \
 	SSO_MIGO_SITE \
+	SSO_MIGO_URL \
 	SSO_MIGO_WEBSERVER \
 	SSO_MIGO_DBENGINE \
+	SSO_MIGO_POSTGRESQL_VERSION_REQUIRED \
 	CMS \
 	CMS_URL \
 	CMS_IPADDR \
@@ -344,11 +359,13 @@ function round_specs()
 	# First backup all values of all target components, and
 	# then clear them up to obtain the specified values 
 	# by means of turnkey invoked before.
+	local BACKUP_LMS=${TARGET_LMS[@]}
 	local BACKUP_SSO=${TARGET_SSO[@]}
 	local BACKUP_CMS=${TARGET_CMS[@]}
 	local BACKUP_ITS=${TARGET_ITS[@]}
 	local BACKUP_SCMR=${TARGET_SCMR[@]}
 	local BACKUP_CI=${TARGET_CI[@]}
+	TARGET_LMS=
 	TARGET_SSO=
 	TARGET_CMS=
 	TARGET_ITS=
@@ -359,7 +376,9 @@ function round_specs()
 	local comp
 	for comp in ${TARGET_SITE_COMPONENTS[@]}
 	do
-		if [ "$comp" = "migo" ] ; then
+		if [ "$comp" = "sentry" ] ; then
+			BACKUP_LMS=
+		elif [ "$comp" = "migo" ] ; then
 			BACKUP_SSO=
 		elif [ "$comp" = "drupal" -o "$comp" = "cmscustom" -o "$comp" = "mediawiki" ] ; then
 			BACKUP_CMS=
@@ -377,11 +396,14 @@ function round_specs()
 	for comp in ${TARGET_SITE_COMPONENTS[@]}
 	do
 		if [ "$comp" = "full" ] ; then
+			TARGET_LMS=${BACKUP_LMS[@]}
 			TARGET_SSO=${BACKUP_SSO[@]}
 			TARGET_CMS=${BACKUP_CMS[@]}
 			TARGET_SCMR=${BACKUP_SCMR[@]}
 			TARGET_CI=${BACKUP_CI[@]}
 			TARGET_ITS=${BACKUP_ITS[@]}
+		elif [ "$comp" = "sentry" ] ; then
+			TARGET_LMS=(${TARGET_LMS[@]} $comp)
 		elif [ "$comp" = "migo" ] ; then
 			TARGET_SSO=(${TARGET_SSO[@]} $comp)
 		elif [ "$comp" = "drupal" -o "$comp" = "cmscustom" -o "$comp" = "mediawiki" ] ; then
@@ -794,7 +816,7 @@ function ciserver_jenkins_clean()
 	fi
 }
 
-# Set up CI Jenkins
+# Setup CI Jenkins
 function ciserver_jenkins()
 {
 	if [ -z "$TARGET_CI" ] ; then
@@ -854,7 +876,7 @@ function ciserver_jenkins()
 	done
 }
 
-# Set up CI server
+# Setup CI server
 function ciserver()
 {
 	# Note that TARGET_CI has support only for one type of product for now, which
@@ -1139,7 +1161,7 @@ function scmrserver_gitolite_clean()
 	fi
 }
 
-# Set up SCMR Gitolite
+# Setup SCMR Gitolite
 function scmrserver_gitolite()
 {
 	if [ -z "$TARGET_SCMR" ] ; then
@@ -1494,7 +1516,7 @@ function scmrserver_gerrit_configure()
 			case $TARGET_SCMR_URL in
 				https | HTTPS)
 					sudo a2enmod ssl proxy proxy_http rewrite
-					# Configure virtual host as well as port for Bugzilla 
+					# Configure virtual host as well as port for Gerrit 
 					# on Apache server
 					if [ ! -f /etc/apache2/sites-available/$TARGET_SCMR_GERRIT_SITE ] ; then
 						# Generate a self-signed certificate for SSL
@@ -1729,7 +1751,7 @@ function scmrserver_gerrit_clean()
 	fi
 }
 
-# Set up SCMR Gerrit
+# Setup SCMR Gerrit
 function scmrserver_gerrit()
 {
 	if [ -z "$TARGET_SCMR" ] ; then
@@ -1789,7 +1811,7 @@ function scmrserver_gerrit()
 	done
 }
 
-# Set up SCMR Server
+# Setup SCMR Server
 function scmrserver()
 {
 	# Note that TARGET_SCMR has support only for two kinds of SCMR for now, 
@@ -2255,7 +2277,7 @@ function itsserver_bugzilla_clean()
 	fi
 }
 
-# Set up ITS Bugzilla
+# Setup ITS Bugzilla
 function itsserver_bugzilla()
 {
 	if [ -z "$TARGET_ITS" ] ; then
@@ -2315,7 +2337,7 @@ function itsserver_bugzilla()
 	done
 }
 
-# Set up ITS server
+# Setup ITS server
 function itsserver()
 {
 	# Note that TARGET_ITS has support only for one kind of ITS for now, 
@@ -2649,7 +2671,6 @@ function cmsserver_mediawiki_clean()
 	
 	echo
 	echo "Cleaning up settings for site[$TARGET_CMS_MEDIAWIKI_SITE]@ipadd[$TARGET_CMS_IPADDR]..."
-	echo
 	
 	case $TARGET_CMS_MEDIAWIKI_DBENGINE in
 		mysql | MYSQL)
@@ -2711,7 +2732,7 @@ function cmsserver_mediawiki_clean()
 	fi
 }
 
-# Set up CMS Mediawiki
+# Setup CMS Mediawiki
 function cmsserver_mediawiki()
 {
 	if [ -z "$TARGET_CMS_WIKI" ] ; then
@@ -2880,7 +2901,7 @@ function cmsserver_custom_clean()
 	fi
 }
 
-# Set up Custom CMS
+# Setup Custom CMS
 function cmsserver_custom()
 {
 	if [ -z "$TARGET_CMS" ] ; then
@@ -3228,7 +3249,7 @@ function cmsserver_drupal_clean()
 	fi
 }
 
-# Set up CMS Drupal
+# Setup CMS Drupal
 function cmsserver_drupal()
 {
 	if [ -z "$TARGET_CMS" ] ; then
@@ -3288,7 +3309,7 @@ function cmsserver_drupal()
 	done
 }
 
-# Set up CMS Server
+# Setup CMS Server
 function cmsserver()
 {
 	# Note that TARGET_CMS has support only for three forms of CMS, 
@@ -3362,16 +3383,17 @@ function ssoserver_migo_install()
 	
 	echo 
 	echo "Installing site[$TARGET_SSO_MIGO_SITE]@IPaddr[$TARGET_SSO_IPADDR]..."
-	echo
 	
 	local ssotop=/home/www-data/$TARGET_SSO_MIGO_SITE
-	if [ ! -d $ssotop/.env ] ; then
-		sudo -u www-data git clone git://github.com/miing/mci_migo.git $TARGET_SSO_CSSOP_SITE
+#	if [ ! -d $ssotop/.env ] ; then
+#		sudo -u www-data git clone git://github.com/miing/mci_migo.git $ssotop
 		cd $ssotop
-		sudo -u www-data fab bootstrap
+		sudo fab bootstrap
+		sudo chown -R www-data:www-data $ssotop
 		sudo -u www-data fab setup_postgresql_server
 		sudo -u www-data fab createsuperuser
-    fi
+		mcitop
+#    fi
 }
 
 # Configure SSO MIGO
@@ -3383,8 +3405,137 @@ function ssoserver_migo_configure()
 		return
 	fi
 	
-	sudo apt-get install libapache2-mod-wsgi
-	sudo a2enmod wsgi
+	echo 
+	echo "Configuring site[$TARGET_SSO_MIGO_SITE]@IPaddr[$TARGET_SSO_IPADDR]..."
+	
+#	case $TARGET_SSO_MIGO_DBENGINE in
+#		postgresql | POSTGRESQL)
+#			local MYSQL MYSQL_HEADER MYSQL_ROOTPW
+#			local dbhost dbname dbuser dbpw
+#			
+#			# Create a new database via postgresql for Migo use which is named 
+#			# after by means of this variable,TARGET_SSO_MIGO_SITE. Let's say,
+#			# this name of the database would be login_mci_org if this value of
+#			# the variable is loing.mci.org.
+#			MYSQL=(`which mysql`)
+#			if [ -z $TARGET_CMS_MEDIAWIKI_MYSQL_DBNAME ] ; then
+#				dbname=(`echo -n $TARGET_CMS_MEDIAWIKI_SITE | sed -e "s/\./_/g"`)
+#				export TARGET_CMS_MEDIAWIKI_MYSQL_DBNAME=$dbname
+#			else
+#				dbname=$TARGET_CMS_MEDIAWIKI_MYSQL_DBNAME
+#			fi
+#			echo 
+#			echo "Creating database[$dbname] in MySQL for Mediawiki..."
+#			echo
+#			if [ -z "$TARGET_DBENGINE_MYSQL_ROOTPW" ] ; then
+#				read -s -p "Enter password for MySQL: " MYSQL_ROOTPW
+#				export TARGET_DBENGINE_MYSQL_ROOTPW=$MYSQL_ROOTPW
+#			else
+#				MYSQL_ROOTPW=$TARGET_DBENGINE_MYSQL_ROOTPW
+#			fi
+#			MYSQL_HEADER="$MYSQL -u root -p'$MYSQL_ROOTPW' --batch --skip-column-names -e"
+#			if [ ! `$MYSQL_HEADER "SHOW DATABASES LIKE '$dbname';"` ] ; then
+#				if [ -z "$TARGET_CMS_MEDIAWIKI_MYSQL_DBPW" ] ; then
+#					read -s -p "Enter password for $TARGET_CMS_WIKI database: " dbpw
+#				else
+#					dbpw=$TARGET_CMS_MEDIAWIKI_MYSQL_DBPW
+#				fi
+#				if [ -z "$TARGET_CMS_MEDIAWIKI_MYSQL_DBUSER" ] ; then
+#					dbuser=mediawiki
+#					export TARGET_CMS_MEDIAWIKI_MYSQL_DBUSER=$dbuser
+#				else
+#					dbuser=$TARGET_CMS_MEDIAWIKI_MYSQL_DBUSER
+#				fi
+#				if [ -z "$TARGET_DBENGINE_MYSQL_HOST" ] ; then
+#					dbhost=localhost
+#					export TARGET_DBENGINE_MYSQL_HOST=$dbhost
+#				else
+#					dbhost=$TARGET_DBENGINE_MYSQL_HOST
+#				fi
+#				MYSQL_HEADER="$MYSQL -u root -p'$MYSQL_ROOTPW' -e"
+#				$MYSQL_HEADER "CREATE DATABASE $dbname;"
+#				$MYSQL_HEADER "CREATE USER '$dbuser'@'$dbhost' IDENTIFIED BY '$dbpw';"
+#				$MYSQL_HEADER "GRANT ALL ON $dbname.* TO '$dbuser'@'$dbhost';"
+#				$MYSQL_HEADER "FLUSH PRIVILEGES;"
+#				$MYSQL_HEADER "QUIT"
+#			fi
+#			;;
+#		*)
+#			echo
+#			echo "** Invalid dbengine type for Migo: '$TARGET_SSO_MIGO_DBENGINE'"
+#			return
+#			;;
+#	esac
+	
+	case $TARGET_SSO_MIGO_WEBSERVER in
+		apache2)
+			local ssourl
+			if [ -n "$TARGET_SSO_MIGO_URL" ] ; then
+				ssourl=$TARGET_SSO_MIGO_URL
+			else
+				ssourl=$TARGET_SSO_URL
+			fi
+			
+			case $ssourl in
+				https | HTTPS)
+					sudo a2enmod ssl rewrite wsgi
+					# Configure virtual host as well as port for Migo 
+					# on Apache server
+					if [ ! -f /etc/apache2/sites-available/$TARGET_SSO_MIGO_SITE ] ; then
+						# Generate a self-signed certificate for SSL
+						if [ ! -d /etc/apache2/ssl ] ; then
+							sudo mkdir /etc/apache2/ssl
+						fi
+						if [ ! -f /etc/apache2/ssl/$TARGET_SSO_MIGO_SITE.pem -o ! -f /etc/apache2/ssl/$TARGET_SSO_MIGO_SITE.key ] ; then
+							local OPENSSL=(`which openssl`)
+							$OPENSSL req -new -x509 -days 365 -nodes -out $TARGET_SSO_MIGO_SITE.pem -keyout $TARGET_SSO_MIGO_SITE.key
+							sudo mv $TARGET_SSO_MIGO_SITE.pem /etc/apache2/ssl
+							sudo mv $TARGET_SSO_MIGO_SITE.key /etc/apache2/ssl
+						fi
+		
+						local vhconfig=$TARGET_SSO_MIGO_SITE.$ssourl
+						if [ -f $TARGET_SITE_CONFIG/migo/$vhconfig ] ; then
+							sudo cp $TARGET_SITE_CONFIG/migo/$vhconfig /etc/apache2/sites-available/$TARGET_SSO_MIGO_SITE
+						else
+							echo
+							echo "** No virtual host configuration for 'Migo' on $TARGET_SSO_MIGO_WEBSERVER"
+							return
+						fi
+		
+						# Enable virtualhost at port 443 for ssl
+						local keys
+						keys=(`grep "^[[:space:]]NameVirtualHost \*:443" /etc/apache2/ports.conf`)
+						if [ ! "$keys" ] ; then
+						sudo sed -i -e "/^<IfModule mod_ssl.c>.*/a\\\tNameVirtualHost \*:443" /etc/apache2/ports.conf
+						fi
+					fi
+					
+					# Match host names with IP address
+					keys=(`cat /etc/hosts | grep -i -e "^[0-9\.]*[[:space:]]*$TARGET_SSO_MIGO_SITE"`)
+					if [ ! "$keys" ] ; then
+					sudo bash -c "cat >>/etc/hosts <<EOF
+$TARGET_SSO_IPADDR $TARGET_SSO_MIGO_SITE
+EOF"
+					fi
+					
+					# Make virtual host configuration to Apache take effect
+					sudo a2ensite $TARGET_SSO_MIGO_SITE
+					sudo a2dissite default
+					sudo /etc/init.d/apache2 restart
+					;;
+				*)
+					echo 
+					echo "** HTTP not supported for 'Migo' yet."
+					return
+					;;
+			esac
+			;;
+		*)
+			echo
+			echo "** Invalid webserver type for Migo: '$TARGET_SSO_MIGO_WEBSERVER'"
+			return
+			;;
+	esac
 }
 
 # Preinstall packages required for MIGO
@@ -3396,29 +3547,15 @@ function ssoserver_migo_preinstall()
 		return
 	fi
 	
+	echo 
+	echo "Preinstalling for site[$TARGET_SSO_MIGO_SITE]@IPaddr[$TARGET_SSO_IPADDR]..."
+	
 	if [ -n "$TARGET_SSO_MIGO_WEBSERVER" ] ; then
 		webserver $TARGET_SSO_MIGO_WEBSERVER
 	fi
 	if [ -n "$TARGET_SSO_MIGO_DBENGINE" ] ; then
 		dbengine $TARGET_SSO_MIGO_DBENGINE
 	fi
-	
-	sudo apt-get -y install git-core wget
-	sudo apt-get -y install build-essential
-	sudo apt-get -y install memcached
-	sudo apt-get -y install python python-dev python-setuptools swig
-	sudo apt-get -y install python-profiler
-	if [ `which pip` ] ; then
-		sudo apt-get --yes --purge remove python-pip
-	fi
-	if [ `which virtualenv` ] ; then
-		sudo apt-get --yes --purge remove python-virtualenv
-	fi
-	sudo easy_install pip
-	sudo pip install --upgrade virtualenv
-	sudo pip install --upgrade fabric
-	sudo apt-get -y install libxml2-dev libxslt1-dev xvfb
-	
 }
 
 # Clean all settings simply around MIGO
@@ -3429,9 +3566,71 @@ function ssoserver_migo_clean()
 		echo "** TARGET_SSO not set yet. Check your site specs to fix it."
 		return
 	fi
+	
+	echo
+	echo "Cleaning for site[$TARGET_SSO_MIGO_SITE]@ipadd[$TARGET_SSO_IPADDR]..."
+	
+#	case $TARGET_SSO_MIGO_DBENGINE in
+#		postgresql | POSTGRESQL)
+#			local MYSQL MYSQL_HEADER_COMPLEX MYSQL_HEADER_SIMPLE MYSQL_ROOTPW 
+#			local dbname
+#			MYSQL=(`which mysql`)
+#			if [ -z $TARGET_CMS_MEDIAWIKI_MYSQL_DBNAME ] ; then
+#				dbname=(`echo -n $TARGET_CMS_MEDIAWIKI_SITE | sed -e "s/\./_/g"`)
+#				export TARGET_CMS_MEDIAWIKI_MYSQL_DBNAME=$dbname
+#			else
+#				dbname=$TARGET_CMS_MEDIAWIKI_MYSQL_DBNAME
+#			fi
+#			if [ -z "$TARGET_DBENGINE_MYSQL_ROOTPW" ] ; then
+#				read -s -p "Enter password for MySQL: " MYSQL_ROOTPW
+#				export TARGET_DBENGINE_MYSQL_ROOTPW=$MYSQL_ROOTPW
+#			else
+#				MYSQL_ROOTPW=$TARGET_DBENGINE_MYSQL_ROOTPW
+#			fi
+#			if [ -z "$TARGET_CMS_MEDIAWIKI_MYSQL_DBUSER" ] ; then
+#				dbuser=wiki
+#				export TARGET_CMS_MEDIAWIKI_MYSQL_DBUSER=$dbuser
+#			else
+#				dbuser=$TARGET_CMS_MEDIAWIKI_MYSQL_DBUSER
+#			fi
+#			MYSQL_HEADER_COMPLEX="$MYSQL -u root -p'$MYSQL_ROOTPW' --batch --skip-column-names -e"
+#			MYSQL_HEADER_SIMPLE="$MYSQL -u root -p'$MYSQL_ROOTPW' -e"
+#			if [ `$MYSQL_HEADER_COMPLEX "SHOW DATABASES LIKE '$dbname';"` ] ; then
+#				$MYSQL_HEADER_SIMPLE "DROP DATABASE $dbname;"
+#			fi
+#			if [ `$MYSQL_HEADER_COMPLEX "SELECT USER FROM mysql.user WHERE user='$dbuser';"` ] ; then
+#				$MYSQL_HEADER_SIMPLE "DROP USER $dbuser;"
+#			fi
+#			;;
+#		*)
+#			echo
+#			echo "** Invalid dbengine type for Migo: '$TARGET_SSO_MIGO_DBENGINE'"
+#			return
+#			;;
+#	esac
+			
+	case $TARGET_SSO_MIGO_WEBSERVER in
+		apache2)
+			if [ -f /etc/apache2/sites-available/$TARGET_SSO_MIGO_SITE ] ; then
+				sudo rm /etc/apache2/sites-available/$TARGET_SSO_MIGO_SITE
+			fi
+			if [ -L /etc/apache2/sites-enabled/$TARGET_SSO_MIGO_SITE ] ; then
+				sudo rm /etc/apache2/sites-enabled/$TARGET_SSO_MIGO_SITE
+			fi
+			;;
+		*)
+			echo
+			echo "** Invalid webserver type for Migo: '$TARGET_SSO_MIGO_WEBSERVER'"
+			return
+			;;
+	esac
+	
+	if [ -d /home/www-data/$TARGET_SSO_MIGO_SITE ] ; then
+		sudo rm -rf /home/www-data/$TARGET_SSO_MIGO_SITE
+	fi
 }
 
-# Set up SSO MIGO
+# Setup SSO MIGO
 function ssoserver_migo()
 {
 	if [ -z "$TARGET_SSO" ] ; then
@@ -3491,7 +3690,7 @@ function ssoserver_migo()
 	done
 }
 
-# Set up SSO Server
+# Setup SSO Server
 function ssoserver()
 {
 	# Note that TARGET_SSO has support only for one type of product for now, which
@@ -3510,7 +3709,166 @@ function ssoserver()
 	done
 }
 
-# Set up Mail Server
+# Upgrade LMS Sentry
+function lmsserver_sentry_upgrade()
+{
+	if [ -z "$TARGET_LMS" ] ; then
+		echo 
+		echo "** TARGET_LMS not set yet. Check your site specs to fix it."
+		return
+	fi
+}
+
+# Backup LMS Sentry
+function lmsserver_sentry_backup()
+{
+	if [ -z "$TARGET_LMS" ] ; then
+		echo 
+		echo "** TARGET_LMS not set yet. Check your site specs to fix it."
+		return
+	fi
+}
+
+# Customize LMS Sentry
+function lmsserver_sentry_custom()
+{
+	if [ -z "$TARGET_LMS" ] ; then
+		echo 
+		echo "** TARGET_LMS not set yet. Check your site specs to fix it."
+		return
+	fi
+}
+
+# Postconfig LMS Sentry
+function lmsserver_sentry_postconfig()
+{
+	if [ -z "$TARGET_LMS" ] ; then
+		echo 
+		echo "** TARGET_LMS not set yet. Check your site specs to fix it."
+		return
+	fi
+}
+
+# Install LMS Sentry
+function lmsserver_sentry_install() 
+{
+	if [ -z "$TARGET_LMS" ] ; then
+		echo 
+		echo "** TARGET_LMS not set yet. Check your site specs to fix it."
+		return
+	fi
+}
+
+# Configure LMS Sentry
+function lmsserver_sentry_configure()
+{
+	if [ -z "$TARGET_LMS" ] ; then
+		echo 
+		echo "** TARGET_LMS not set yet. Check your site specs to fix it."
+		return
+	fi
+}
+
+# Preinstall packages required for Sentry
+function lmsserver_sentry_preinstall()
+{
+	if [ -z "$TARGET_LMS" ] ; then
+		echo 
+		echo "** TARGET_LMS not set yet. Check your site specs to fix it."
+		return
+	fi
+}
+
+# Clean all settings simply around Sentry
+function lmsserver_sentry_clean()
+{
+	if [ -z "$TARGET_LMS" ] ; then
+		echo 
+		echo "** TARGET_LMS not set yet. Check your site specs to fix it."
+		return
+	fi
+}
+
+# Setup LMS Sentry
+function lmsserver_sentry()
+{
+	if [ -z "$TARGET_LMS" ] ; then
+		echo 
+		echo "** TARGET_LMS not set yet. Check your site specs to fix it."
+		return
+	fi
+	
+	local goal
+	for goal in ${TARGET_SITE_GOALS[@]}
+	do
+		case $goal in
+			clean)
+				lmsserver_sentry_clean
+				;;
+			preinstall)
+				lmsserver_sentry_preinstall
+				;;
+			configure)
+				lmsserver_sentry_configure
+				;;
+			install)
+				lmsserver_sentry_install
+				;;
+			postconfig)
+				lmsserver_sentry_postconfig
+				;;
+			custom)
+				lmsserver_sentry_custom
+				;;
+			backup)
+				lmsserver_sentry_backup
+				;;
+			upgrade)
+				lmsserver_sentry_upgrade
+				;;
+			lite)
+				lmsserver_sentry_clean
+				lmsserver_sentry_preinstall
+				lmsserver_sentry_configure
+				lmsserver_sentry_install
+				;;
+			all)
+				lmsserver_sentry_clean
+				lmsserver_sentry_preinstall
+				lmsserver_sentry_configure
+				lmsserver_sentry_install
+				lmsserver_sentry_postconfig
+				lmsserver_sentry_custom
+				;;
+			*)
+				echo
+				echo "** Invalid TARGET SITE GOALS: '$goal'"
+				return
+				;;
+		esac
+	done
+}
+
+# Setup LMS Server
+function lmsserver()
+{
+	# Note that TARGET_LMS has support only for one type of product for now, which
+	# covers Sentry
+	local lms
+	for lms in ${TARGET_LMS[@]}
+	do
+		if [ $lms = "sentry" ] ; then
+			lmsserver_sentry
+		else
+			echo 
+			echo "** Invalid LMS: '$lms'"
+			echo "** Must be one of '${LMS_CHOICES[@]}'"
+			return
+		fi
+	done
+}
+
+# Setup Mail Server
 function mailserver()
 {
 	echo
@@ -3559,7 +3917,7 @@ EOF"
 	fi
 }
 
-# Set up Web Server
+# Setup Web Server
 function webserver()
 {
 	case $1 in
@@ -3640,7 +3998,7 @@ function dbengine_mysql_install()
 	fi
 }
 
-# Set up DB Engine
+# Setup DB Engine
 function dbengine()
 {
 	case $1 in
@@ -3658,9 +4016,12 @@ function dbengine()
 	esac
 }
 
-# Set up Apps Server
+# Setup Apps Server
 function appsserver()
 {
+	if [ "$TARGET_LMS" ] ; then
+		lmsserver
+	fi
 	if [ "$TARGET_SSO" ] ; then
 		ssoserver
 	fi
@@ -3684,6 +4045,7 @@ function showconfig()
 	echo
 	echo "=========================="
 	echo "TARGET_SITE=$TARGET_SITE"
+	echo "TARGET_LMS=$TARGET_LMS[@]"
 	echo "TARGET_SSO=${TARGET_SSO[@]}"
 	echo "TARGET_CMS=${TARGET_CMS[@]}"
 	echo "TARGET_ITS=${TARGET_ITS[@]}"

@@ -13,6 +13,9 @@ inherit_specs build/specs/ci.sh
 # Overrides
 MCI_SITE_NAME=mci.org
 
+MCI_LMS=sentry
+MCI_LMS_SENTRY_SITE=logs.mci.org
+
 MCI_SSO=migo
 MCI_SSO_MIGO_SITE=login.mci.org
 
