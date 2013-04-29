@@ -217,6 +217,8 @@ SITE_SPECS_BODY=(\
 	SITE_THEMES \
 	DBENGINE_MYSQL_ROOTPW \
 	DBENGINE_MYSQL_HOST \
+	DBENGINE_PGSQL_ROOTPW \
+	DBENGINE_PGSQL_HOST \
 	WEBSERVER_APACHE2_OWNER \
 	WEBSERVER_APACHE2_OWNER_HOME \
 	WEBSERVER_APACHE2_OWNER_SHELL \
@@ -229,6 +231,9 @@ SITE_SPECS_BODY=(\
 	LMS_SENTRY_WEBSERVER \
 	LMS_SENTRY_DBENGINE \
 	LMS_SENTRY_POSTGRESQL_VERSION_REQUIRED \
+	LMS_SENTRY_PGSQL_DBNAME \
+	LMS_SENTRY_PGSQL_DBUSER \
+	LMS_SENTRY_PGSQL_DBPW \
 	SSO \
 	SSO_URL \
 	SSO_IPADDR \
@@ -3757,6 +3762,18 @@ function lmsserver_sentry_install()
 		echo "** TARGET_LMS not set yet. Check your site specs to fix it."
 		return
 	fi
+	
+	
+	sudo -u sentry virtualenv /home/sentry/
+	local bin_path=/home/sentry/bin
+	local keys=(`grep -i '$bin_path' /home/gerrit/.bashrc 2>/dev/null`)
+	if [ ! "$keys" ] ; then
+		sudo -H -u sentry bash -c "echo 'PATH=$bin_path:$PATH' >>/home/sentry/.bashrc"
+	fi
+	sudo -H -u sentry bash -c ". /home/sentry/bin/activate && pip install sentry"
+	sudo -H -u sentry bash -c ". /home/sentry/bin/activate && pip install psycopg2"
+	sudo -H -u sentry bash -c ". /home/sentry/bin/activate && sentry init /home/sentry/etc/sentry.conf.py"
+	sudo -H -u sentry bash -c ". /home/sentry/bin/activate && sentry --config=/home/sentry/etc/sentry.conf.py start"
 }
 
 # Configure LMS Sentry
@@ -3767,6 +3784,145 @@ function lmsserver_sentry_configure()
 		echo "** TARGET_LMS not set yet. Check your site specs to fix it."
 		return
 	fi
+	
+	echo 
+	echo "Configuring site[$TARGET_LMS_SENTRY_SITE]@IPaddr[$TARGET_LMS_IPADDR]..."
+	
+	# Add a new user on system which is named sentry
+	if [ ! `id -u sentry 2>/dev/null` ] ; then
+		sudo adduser \
+			--system \
+			--shell /bin/bash \
+			--gecos 'Sentry Logging Review' \
+			--group \
+			--disabled-password \
+			--home /home/sentry \
+			sentry
+	fi
+	
+	case $TARGET_LMS_SENTRY_DBENGINE in
+		postgresql | POSTGRESQL)
+			# Create a new database via postgresql for Sentry use which is named 
+			# by means of this variable, TARGET_LMS_SENTRY_SITE. Let's say,
+			# this name of the database would be logs_mci_org if this 
+			# value of the variable is logs.mci.org.
+			local PGSQL_HEADER PGSQL_ROOTPW 
+			local PSQL PGSQL_CREATEUSER PGSQL_CREATEDB
+			local dbhost dbname dbuser dbpw ret
+			
+			if [ -z $TARGET_LMS_SENTRY_PGSQL_DBNAME ] ; then
+				dbname=(`echo -n $TARGET_LMS_SENTRY_SITE | sed -e "s/\./_/g"`)
+				TARGET_LMS_SENTRY_PGSQL_DBNAME=$dbname
+			else
+				dbname=$TARGET_LMS_SENTRY_PGSQL_DBNAME
+			fi
+			
+			echo 
+			echo "Creating database[$dbname] in '$TARGET_LMS_SENTRY_DBENGINE' for Sentry..."
+			
+			PSQL=(`which psql`) 
+			PGSQL_CREATEUSER=(`which createuser`)
+			PGSQL_CREATEDB=(`which createdb`)
+			if [ -z "$TARGET_DBENGINE_PGSQL_ROOTPW" ] ; then
+				read -s -p "Enter password for PGSQL: " PGSQL_ROOTPW
+				TARGET_DBENGINE_PGSQL_ROOTPW=$PGSQL_ROOTPW
+			else
+				PGSQL_ROOTPW=$TARGET_DBENGINE_PGSQL_ROOTPW
+			fi
+			PGSQL_HEADER="sudo -u postgres"
+			ret=(`$PGSQL_HEADER $PSQL -d $dbname -c "\q" 2>/dev/null`)
+			if [ $? -ne 0 ] ; then
+				if [ -z "$TARGET_LMS_SENTRY_PGSQL_DBPW" ] ; then
+					read -s -p "Enter password for Sentry database: " dbpw
+				else
+					dbpw=$TARGET_LMS_SENTRY_PGSQL_DBPW
+				fi
+				if [ -z "$TARGET_LMS_SENTRY_PGSQL_DBUSER" ] ; then
+					dbuser=sentry
+					TARGET_LMS_SENTRY_PGSQL_DBUSER=$dbuser
+				else
+					dbuser=$TARGET_LMS_SENTRY_PGSQL_DBUSER
+				fi
+				if [ -z "$TARGET_DBENGINE_PGSQL_HOST" ] ; then
+					dbhost=localhost
+					TARGET_DBENGINE_PGSQL_HOST=$dbhost
+				else
+					dbhost=$TARGET_DBENGINE_PGSQL_HOST
+				fi
+				$PGSQL_HEADER $PSQL -c "CREATE USER $dbuser NOSUPERUSER NOCREATEROLE NOCREATEDB ENCRYPTED PASSWORD '$dbpw'"
+				$PGSQL_HEADER $PGSQL_CREATEDB -E UTF8 --owner=$dbuser $dbname
+			fi
+			;;
+		*)
+			echo
+			echo "** Invalid dbengine type for Sentry: '$TARGET_LMS_SENTRY_DBENGINE'"
+			return
+			;;
+	esac
+	
+	case $TARGET_LMS_SENTRY_WEBSERVER in
+		apache2)
+			case $TARGET_LMS_URL in
+				https | HTTPS)
+					sudo a2enmod ssl proxy proxy_http rewrite
+					# Configure virtual host as well as port for Sentry 
+					# on Apache server
+					if [ ! -f /etc/apache2/sites-available/$TARGET_LMS_SENTRY_SITE ] ; then
+						# Generate a self-signed certificate for SSL
+						if [ ! -d /etc/apache2/ssl ] ; then
+							sudo mkdir /etc/apache2/ssl
+						fi
+						if [ ! -f /etc/apache2/ssl/$TARGET_LMS_SENTRY_SITE.pem -o ! -f /etc/apache2/ssl/$TARGET_LMS_SENTRY_SITE.key ] ; then
+							local OPENSSL=(`which openssl`)
+							$OPENSSL req -new -x509 -days 365 -nodes -out $TARGET_LMS_SENTRY_SITE.pem -keyout $TARGET_LMS_SENTRY_SITE.key
+							sudo mv $TARGET_LMS_SENTRY_SITE.pem /etc/apache2/ssl
+							sudo mv $TARGET_LMS_SENTRY_SITE.key /etc/apache2/ssl
+						fi
+						
+						local vhconfig
+						vhconfig=$TARGET_LMS_SENTRY_SITE.$TARGET_LMS_URL
+						if [ -f $TARGET_SITE_CONFIG/sentry/$vhconfig ] ; then
+							sudo cp $TARGET_SITE_CONFIG/sentry/$vhconfig /etc/apache2/sites-available/$TARGET_LMS_SENTRY_SITE
+						else
+							echo
+							echo "** No virtual host configuration for 'Sentry' on $TARGET_LMS_SENTRY_WEBSERVER"
+							return
+						fi 
+		
+						# Enable virtualhost at port 443 for ssl
+						local keys
+						keys=(`grep "^[[:space:]]NameVirtualHost \*:443" /etc/apache2/ports.conf 2>/dev/null`)
+						if [ ! "$keys" ] ; then
+							sudo sed -i -e "/^<IfModule mod_ssl.c>.*/a\\\tNameVirtualHost \*:443" /etc/apache2/ports.conf
+						fi
+					fi
+					
+					# Match host names with IP address
+					keys=(`cat /etc/hosts | grep -i -e "^[0-9\.]*[[:space:]]*$TARGET_LMS_SENTRY_SITE"`)
+					if [ ! "$keys" ] ; then
+					sudo bash -c "cat >>/etc/hosts <<EOF
+$TARGET_LMS_IPADDR $TARGET_LMS_SENTRY_SITE
+EOF"
+					fi
+					
+					# Make virtual host configuration to Apache take effect
+					sudo a2ensite $TARGET_LMS_SENTRY_SITE
+					sudo a2dissite default
+					sudo /etc/init.d/apache2 restart
+					;;
+				*)
+					echo 
+					echo "** HTTP not supported for 'Sentry' yet."
+					return
+					;;
+			esac
+			;;
+		*)
+			echo
+			echo "** Invalid webserver type for Sentry: '$TARGET_LMS_SENTRY_WEBSERVER'"
+			return
+			;;
+	esac
 }
 
 # Preinstall packages required for Sentry
@@ -3776,6 +3932,35 @@ function lmsserver_sentry_preinstall()
 		echo 
 		echo "** TARGET_LMS not set yet. Check your site specs to fix it."
 		return
+	fi
+	
+	echo 
+	echo "Preinstalling for site[$TARGET_LMS_SENTRY_SITE]@IPaddr[$TARGET_LMS_IPADDR]..."
+	
+	if [ -n "$TARGET_LMS_SENTRY_WEBSERVER" ] ; then
+		webserver $TARGET_LMS_SENTRY_WEBSERVER
+	fi
+	if [ -n "$TARGET_LMS_SENTRY_DBENGINE" ] ; then
+		dbengine $TARGET_LMS_SENTRY_DBENGINE
+	fi
+	if [ "$TARGET_LMS_URL" = "https" -o "$TARGET_LMS_URL" = "HTTPS" ] ; then
+		if [[ ! `which ssh` || ! `which sshd` ]] ; then
+			sudo apt-get -y install openssh-client openssh-server
+		
+			# After installation of ssh client/server, I would like to generate
+			# new ssh public/private key pair, although the key pair may have
+			# been already there for some reason.
+			# ssh-keygen -t rsa
+			ssh-add
+		fi
+	fi
+	
+	# Setup Python on which Sentry runs depending
+	if [ ! `which python` ] ; then
+		sudo apt-get -y install python
+	fi
+	if [ ! `which supervisord` ] ; then
+		sudo apt-get -y install supervisord
 	fi
 }
 
@@ -3787,6 +3972,92 @@ function lmsserver_sentry_clean()
 		echo "** TARGET_LMS not set yet. Check your site specs to fix it."
 		return
 	fi
+	
+	echo
+	echo "Cleaning for site[$TARGET_LMS_SENTRY_SITE]@ipadd[$TARGET_LMS_IPADDR]..."
+	
+	local keys
+	keys=(`ps -ef | grep -i "^sentry" 2>/dev/null`)
+	if [ "$keys" ] ; then
+		sudo /etc/init.d/sentry stop
+	fi
+	if [ -L /etc/init.d/sentry ] ; then
+		sudo rm /etc/init.d/sentry
+		
+		if [ -f /etc/default/sentry ] ; then
+			sudo rm /etc/default/sentry
+		fi
+	fi
+	
+	case $TARGET_LMS_SENTRY_DBENGINE in
+		postgresql | POSTGRESQL)
+			local PSQL PGSQL_HEADER PGSQL_ROOTPW 
+			local dbhost dbname dbuser ret
+			PSQL=(`which psql`)
+			if [ -z $TARGET_LMS_SENTRY_PGSQL_DBNAME ] ; then
+				dbname=(`echo -n $TARGET_LMS_SENTRY_SITE | sed -e "s/\./_/g"`)
+				TARGET_LMS_SENTRY_PGSQL_DBNAME=$dbname
+			else
+				dbname=$TARGET_LMS_SENTRY_PGSQL_DBNAME
+			fi
+			if [ -z "$TARGET_DBENGINE_PGSQL_ROOTPW" ] ; then
+				read -s -p "Enter password for PGSQL: " PGSQL_ROOTPW
+				TARGET_DBENGINE_PGSQL_ROOTPW=$PGSQL_ROOTPW
+			else
+				PGSQL_ROOTPW=$TARGET_DBENGINE_PGSQL_ROOTPW
+			fi
+			if [ -z "$TARGET_LMS_SENTRY_PGSQL_DBUSER" ] ; then
+				dbuser=sentry
+				TARGET_LMS_SENTRY_PGSQL_DBUSER=$dbuser
+			else
+				dbuser=$TARGET_LMS_SENTRY_PGSQL_DBUSER
+			fi
+			if [ -z "$TARGET_DBENGINE_PGSQL_HOST" ] ; then
+				dbhost=localhost
+				TARGET_DBENGINE_PGSQL_HOST=$dbhost
+			else
+				dbhost=$TARGET_DBENGINE_PGSQL_HOST
+			fi
+			
+			PGSQL_HEADER="sudo -u postgres"
+			ret=(`$PGSQL_HEADER $PSQL -d $dbname -c "\q" 2>/dev/null`)
+			if [ $? -eq 0 ] ; then
+				$PGSQL_HEADER $PSQL -c "DROP DATABASE $dbname;"
+			fi
+			ret=(`$PGSQL_HEADER $PSQL -t -A -c "SELECT COUNT(*) FROM pg_user WHERE usename = '$dbuser';"`)
+			if [ $ret -eq 1 ] ; then
+				$PGSQL_HEADER $PSQL -c "DROP USER $dbuser;"
+			fi
+			;;
+		*)
+			echo
+			echo "** Invalid dbengine type for Sentry: '$TARGET_LMS_SENTRY_DBENGINE'"
+			return
+			;;
+	esac
+			
+	case $TARGET_LMS_SENTRY_WEBSERVER in
+		apache2)
+			if [ -f /etc/apache2/sites-available/$TARGET_LMS_SENTRY_SITE ] ; then
+				sudo rm /etc/apache2/sites-available/$TARGET_LMS_SENTRY_SITE
+			fi
+			if [ -L /etc/apache2/sites-enabled/$TARGET_LMS_SENTRY_SITE ] ; then
+				sudo rm /etc/apache2/sites-enabled/$TARGET_LMS_SENTRY_SITE
+			fi
+			;;
+		*)
+			echo
+			echo "** Invalid webserver type for Sentry: '$TARGET_LMS_SENTRY_WEBSERVER'"
+			return
+			;;
+	esac
+	
+#	if [ `id -u sentry 2>/dev/null` ] ; then
+#		sudo deluser sentry
+#	fi
+#	if [ -d /home/sentry ] ; then
+#		sudo rm -rf /home/sentry
+#	fi
 }
 
 # Setup LMS Sentry
@@ -3934,7 +4205,7 @@ function webserver()
 
 function dbengine_postgresql_install()
 {
-	if [ "$TARGET_SSO" = "migo" ] ; then
+	if [ "$TARGET_SSO" = "migo" -o "$TARGET_LMS" = "sentry" ] ; then
 		# For the time being, there are only two types of versions of Postgresql
 		# officially supported against Ubuntu distros, namely precise (12.04) and
 		# lucid (10.04), according to http://www.postgresql.org/download/linux/ubuntu/.
@@ -4045,7 +4316,7 @@ function showconfig()
 	echo
 	echo "=========================="
 	echo "TARGET_SITE=$TARGET_SITE"
-	echo "TARGET_LMS=$TARGET_LMS[@]"
+	echo "TARGET_LMS=${TARGET_LMS[@]}"
 	echo "TARGET_SSO=${TARGET_SSO[@]}"
 	echo "TARGET_CMS=${TARGET_CMS[@]}"
 	echo "TARGET_ITS=${TARGET_ITS[@]}"

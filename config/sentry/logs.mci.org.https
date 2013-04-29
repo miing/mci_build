@@ -1,0 +1,40 @@
+<VirtualHost *:80>
+  ServerAdmin webmaster@localhost
+  ServerName logs.mci.org
+ 
+  LogLevel warn
+  ErrorLog /var/log/apache2/logs.mci.org.error.log
+  CustomLog /var/log/apache2/logs.mci.org.access.log combined
+
+  Redirect / https://logs.mci.org/
+</VirtualHost>
+
+<VirtualHost *:443>
+  ServerName logs.mci.org
+
+  # Activate HTTPS on the reverse proxy
+  SSLEngine on
+  SSLCertificateFile	/etc/apache2/ssl/logs.mci.org.pem
+  SSLCertificateKeyFile	/etc/apache2/ssl/logs.mci.org.key
+
+  SSLProxyEngine on
+
+  ProxyRequests Off
+  ProxyPreserveHost On
+  ProxyVia Off
+  
+  <Proxy *>
+  	Order deny,allow
+    Allow from all
+  </Proxy>
+  
+  RewriteEngine on
+  RewriteCond %{HTTP_HOST} !^logs.mci.org
+  RewriteRule ^.*$ https://logs.mci.org
+  
+  ProxyPass / http://127.0.0.1:9000/
+  ProxyPassReverse / http://127.0.0.1:9000/
+
+  ErrorLog /var/log/apache2/logs.mci.org.ssl.error.log
+  CustomLog /var/log/apache2/logs.mci.org.ssl.access.log combined
+</VirtualHost>
