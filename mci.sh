@@ -3763,17 +3763,34 @@ function lmsserver_sentry_install()
 		return
 	fi
 	
+	echo 
+	echo "Installing for site[$TARGET_LMS_SENTRY_SITE]@IPaddr[$TARGET_LMS_IPADDR]..."
 	
-	sudo -u sentry virtualenv /home/sentry/
-	local bin_path=/home/sentry/bin
-	local keys=(`grep -i '$bin_path' /home/gerrit/.bashrc 2>/dev/null`)
-	if [ ! "$keys" ] ; then
-		sudo -H -u sentry bash -c "echo 'PATH=$bin_path:$PATH' >>/home/sentry/.bashrc"
+	if [ ! -f /home/sentry/etc/sentry.conf.py ] ; then
+		sudo -u sentry virtualenv /home/sentry/
+		
+		local bin_path=/home/sentry/bin
+		local keys=(`grep -i '$bin_path' /home/gerrit/.bashrc 2>/dev/null`)
+		if [ ! "$keys" ] ; then
+			sudo -H -u sentry bash -c "echo 'PATH=$bin_path:$PATH' >>/home/sentry/.bashrc"
+		fi
+		
+		sudo -H -u sentry bash -c ". /home/sentry/bin/activate && pip install sentry"
+		if [ "$TARGET_LMS_SENTRY_DBENGINE" = "postgres" -o "$TARGET_LMS_SENTRY_DBENGINE" = "POSTGRES" ] ; then
+			sudo -H -u sentry bash -c ". /home/sentry/bin/activate && pip install psycopg2"
+		fi
+		sudo -H -u sentry bash -c ". /home/sentry/bin/activate && sentry init /home/sentry/etc/sentry.conf.py"
 	fi
-	sudo -H -u sentry bash -c ". /home/sentry/bin/activate && pip install sentry"
-	sudo -H -u sentry bash -c ". /home/sentry/bin/activate && pip install psycopg2"
-	sudo -H -u sentry bash -c ". /home/sentry/bin/activate && sentry init /home/sentry/etc/sentry.conf.py"
-	sudo -H -u sentry bash -c ". /home/sentry/bin/activate && sentry --config=/home/sentry/etc/sentry.conf.py start"
+	
+	local config=sentry.conf.py
+	if [ -f $TARGET_SITE_CONFIG/sentry/$config ] ; then
+		sudo -u sentry cp $TARGET_SITE_CONFIG/sentry/$config /home/sentry/etc
+	fi
+	config=sentry.conf
+	if [ -f $TARGET_SITE_CONFIG/sentry/$config ] ; then
+		sudo cp $TARGET_SITE_CONFIG/sentry/$config /etc/supervisor/conf.d/
+		sudo /etc/init.d/supervisor restart
+	fi
 }
 
 # Configure LMS Sentry
@@ -3801,7 +3818,7 @@ function lmsserver_sentry_configure()
 	fi
 	
 	case $TARGET_LMS_SENTRY_DBENGINE in
-		postgresql | POSTGRESQL)
+		postgres | POSTGRES)
 			# Create a new database via postgresql for Sentry use which is named 
 			# by means of this variable, TARGET_LMS_SENTRY_SITE. Let's say,
 			# this name of the database would be logs_mci_org if this 
