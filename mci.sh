@@ -3770,13 +3770,13 @@ function lmsserver_sentry_install()
 		sudo -u sentry virtualenv /home/sentry/
 		
 		local bin_path=/home/sentry/bin
-		local keys=(`grep -i '$bin_path' /home/gerrit/.bashrc 2>/dev/null`)
+		local keys=(`grep -i '$bin_path' /home/sentry/.bashrc 2>/dev/null`)
 		if [ ! "$keys" ] ; then
 			sudo -H -u sentry bash -c "echo 'PATH=$bin_path:$PATH' >>/home/sentry/.bashrc"
 		fi
 		
 		sudo -H -u sentry bash -c ". /home/sentry/bin/activate && pip install sentry"
-		if [ "$TARGET_LMS_SENTRY_DBENGINE" = "postgres" -o "$TARGET_LMS_SENTRY_DBENGINE" = "POSTGRES" ] ; then
+		if [ "$TARGET_LMS_SENTRY_DBENGINE" = "postgresql" -o "$TARGET_LMS_SENTRY_DBENGINE" = "POSTGRESQL" ] ; then
 			sudo -H -u sentry bash -c ". /home/sentry/bin/activate && pip install psycopg2"
 		fi
 		sudo -H -u sentry bash -c ". /home/sentry/bin/activate && sentry init /home/sentry/etc/sentry.conf.py"
@@ -3791,6 +3791,7 @@ function lmsserver_sentry_install()
 		sudo cp $TARGET_SITE_CONFIG/sentry/$config /etc/supervisor/conf.d/
 		sudo /etc/init.d/supervisor restart
 	fi
+	sudo -H -u sentry bash -c ". /home/sentry/bin/activate && sentry --config=/home/sentry/etc/sentry.conf.py createsuperuser"
 }
 
 # Configure LMS Sentry
@@ -3818,14 +3819,14 @@ function lmsserver_sentry_configure()
 	fi
 	
 	case $TARGET_LMS_SENTRY_DBENGINE in
-		postgres | POSTGRES)
+		postgresql | POSTGRESQL)
 			# Create a new database via postgresql for Sentry use which is named 
 			# by means of this variable, TARGET_LMS_SENTRY_SITE. Let's say,
 			# this name of the database would be logs_mci_org if this 
 			# value of the variable is logs.mci.org.
 			local PGSQL_HEADER PGSQL_ROOTPW 
 			local PSQL PGSQL_CREATEUSER PGSQL_CREATEDB
-			local dbhost dbname dbuser dbpw ret
+			local dbhost dbname dbuser dbpw ret keys
 			
 			if [ -z $TARGET_LMS_SENTRY_PGSQL_DBNAME ] ; then
 				dbname=(`echo -n $TARGET_LMS_SENTRY_SITE | sed -e "s/\./_/g"`)
@@ -3868,6 +3869,11 @@ function lmsserver_sentry_configure()
 				fi
 				$PGSQL_HEADER $PSQL -c "CREATE USER $dbuser NOSUPERUSER NOCREATEROLE NOCREATEDB ENCRYPTED PASSWORD '$dbpw'"
 				$PGSQL_HEADER $PGSQL_CREATEDB -E UTF8 --owner=$dbuser $dbname
+				
+				keys=(`sudo grep "^local[[:space:]]\+$dbname[[:space:]]\+$dbuser[[:space:]]\+md5" /etc/postgresql/*/main/pg_hba.conf 2>/dev/null`)
+				if [ ! "$keys" ] ; then
+					sudo sed -i -e "/^local[[:space:]]\+all[[:space:]]\+postgres/i\local\t$dbname\t$dbuser\tmd5" /etc/postgresql/*/main/pg_hba.conf
+				fi
 			fi
 			;;
 		*)
@@ -3907,7 +3913,6 @@ function lmsserver_sentry_configure()
 						fi 
 		
 						# Enable virtualhost at port 443 for ssl
-						local keys
 						keys=(`grep "^[[:space:]]NameVirtualHost \*:443" /etc/apache2/ports.conf 2>/dev/null`)
 						if [ ! "$keys" ] ; then
 							sudo sed -i -e "/^<IfModule mod_ssl.c>.*/a\\\tNameVirtualHost \*:443" /etc/apache2/ports.conf
@@ -4069,12 +4074,12 @@ function lmsserver_sentry_clean()
 			;;
 	esac
 	
-#	if [ `id -u sentry 2>/dev/null` ] ; then
-#		sudo deluser sentry
-#	fi
-#	if [ -d /home/sentry ] ; then
-#		sudo rm -rf /home/sentry
-#	fi
+	if [ `id -u sentry 2>/dev/null` ] ; then
+		sudo deluser sentry
+	fi
+	if [ -d /home/sentry ] ; then
+		sudo rm -rf /home/sentry
+	fi
 }
 
 # Setup LMS Sentry
