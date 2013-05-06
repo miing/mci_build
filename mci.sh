@@ -607,16 +607,22 @@ function ciserver_jenkins_install()
 	echo "Installing for site[$TARGET_CI_JENKINS_SITE]@IPaddr[$TARGET_CI_IPADDR]..."
 	
 	if [ ! -f /home/jenkins/bin/jenkins.war ] ; then
-		# Create bin dir under home for user jenkins 
+		# Create bin/logs dir under home for user jenkins 
 		local bin_path=/home/jenkins/bin
 		if [ ! -d "$bin_path" ] ; then
 			sudo -H -u jenkins mkdir $bin_path
+		fi
+		local logs_path=/home/jenkins/logs
+		if [ ! -d "$logs_path" ] ; then
+			sudo -H -u jenkins mkdir $logs_path
 		fi
 		# Set bin path to PATH
 		local keys=(`grep -i '$bin_path' /home/jenkins/.bashrc 2>/dev/null`)
 		if [ ! "$keys" ] ; then
 			sudo -H -u jenkins /bin/bash -c "echo 'PATH=$bin_path:$PATH' >>/home/jenkins/.bashrc"
 		fi
+		
+		
 
 		# Pick up the up-to-date version of Jenkins 
 		# from http://mirrors.jenkins-ci.org/war
