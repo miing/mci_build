@@ -2,7 +2,7 @@
 inherit_specs build/specs/common.sh
 
 inherit_specs build/specs/dbengine.sh
-inherit_specs build/specs/webserver.sh
+inherit_specs build/specs/httpd.sh
 
 inherit_specs build/specs/lms.sh
 inherit_specs build/specs/sso.sh

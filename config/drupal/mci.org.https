@@ -1,0 +1,32 @@
+<VirtualHost *:80>
+  ServerAdmin webmaster@localhost
+  ServerName mci.org
+  ServerAlias www.mci.org
+ 
+  LogLevel warn
+  ErrorLog /var/log/apache2/mci.org.error.log
+  CustomLog /var/log/apache2/mci.org.access.log combined
+
+  Redirect / https://mci.org/
+</VirtualHost>
+
+<VirtualHost *:443>
+  ServerName mci.org
+  ServerAlias www.mci.org
+
+  # Activate HTTPS on Apache2
+  SSLEngine on
+  SSLCertificateFile	/etc/apache2/ssl/mci.org.crt
+  SSLCertificateKeyFile	/etc/apache2/ssl/mci.org.key
+  
+  DocumentRoot /home/www-data/mci.org
+  <Directory /home/www-data/mci.org>
+    Options -Indexes +FollowSymLinks MultiViews
+    AllowOverride None
+    Order allow,deny
+    allow from all
+  </Directory>
+
+  ErrorLog /var/log/apache2/mci.org.ssl.error.log
+  CustomLog /var/log/apache2/mci.org.ssl.access.log combined
+</VirtualHost>
